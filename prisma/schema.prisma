@@ -1,0 +1,260 @@
+// WhaReception — data model
+// Multi-tenant WhatsApp receptionist platform.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum AppointmentMode {
+  lead_only
+  external_link
+  calendar_request
+  calendar_auto
+}
+
+// Per-service handling flow.
+enum ServiceFlow {
+  lead_only
+  external_link
+  human_handoff
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum MessageRole {
+  customer
+  assistant
+  system
+}
+
+// High-level state of a conversation as persisted for history/audit.
+// Live, in-progress slot-filling state lives in Redis.
+enum ConversationStatus {
+  active
+  awaiting_human
+  closed
+}
+
+enum AppointmentRequestStatus {
+  pending_confirmation
+  confirmed
+  cancelled
+}
+
+enum HandoffReason {
+  emergency
+  customer_requested_human
+  low_confidence
+  sensitive_case
+  unhandled
+}
+
+enum HandoffStatus {
+  open
+  in_progress
+  resolved
+}
+
+// ---------------------------------------------------------------------------
+// Tenant / Business configuration
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id        String   @id @default(cuid())
+  // Stable human-friendly key used by the simulation endpoint (e.g. "demo-vet").
+  slug      String   @unique
+  name      String
+  industry  String   @default("veterinary")
+  timezone  String   @default("America/Costa_Rica")
+
+  // Business hours stored as { monday: "8:00 AM - 6:00 PM", ... }.
+  businessHours Json
+
+  locationText           String?
+  googleMapsUrl          String?
+  // Number the internal team summaries are sent to.
+  internalWhatsappNumber String?
+
+  appointmentMode AppointmentMode @default(lead_only)
+  tone            String          @default("friendly and professional")
+
+  // Keywords that immediately trigger an emergency handoff.
+  emergencyKeywords String[]
+  // Message shown to a customer when an emergency is detected. Must come from
+  // the business; the bot never invents emergency instructions.
+  emergencyMessage  String?
+
+  services      Service[]
+  faqs          Faq[]
+  customers     Customer[]
+  conversations Conversation[]
+  appointments  AppointmentRequest[]
+  handoffs      HandoffRequest[]
+  webhookEvents WebhookEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Service {
+  id        String      @id @default(cuid())
+  tenantId  String
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  // Keywords used by the deterministic classifier to match this service.
+  keywords  String[]
+  flow      ServiceFlow @default(lead_only)
+  // Only relevant for the external_link flow.
+  bookingUrl String?
+  active     Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model Faq {
+  id       String   @id @default(cuid())
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Stable key for special FAQs the engine handles directly (e.g. "hours", "location").
+  key      String?
+  question String
+  answer   String
+  keywords String[]
+  active   Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ---------------------------------------------------------------------------
+// Conversation domain
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // WhatsApp phone number in E.164 form.
+  phone     String
+  name      String?
+
+  conversations Conversation[]
+  appointments  AppointmentRequest[]
+  handoffs      HandoffRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+}
+
+model Conversation {
+  id         String             @id @default(cuid())
+  tenantId   String
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  status     ConversationStatus @default(active)
+
+  messages     Message[]
+  appointments AppointmentRequest[]
+  handoffs     HandoffRequest[]
+
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, customerId])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      MessageDirection
+  role           MessageRole
+  body           String
+  // Optional structured metadata (detected intent, provider message id, etc.).
+  metadata       Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId])
+}
+
+model AppointmentRequest {
+  id             String                   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation             @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer                 @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  customerName  String?
+  petName       String?
+  petType       String?
+  serviceName   String?
+  reason        String?
+  preferredTime String?
+  isEmergency   Boolean                  @default(false)
+  phone         String?
+  status        AppointmentRequestStatus @default(pending_confirmation)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model HandoffRequest {
+  id             String        @id @default(cuid())
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  reason         HandoffReason
+  status         HandoffStatus @default(open)
+  // Snapshot of why this was raised (triggering message, confidence, etc.).
+  context        Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+}
+
+model WebhookEvent {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  source    String   @default("whatsapp")
+  payload   Json
+  processed Boolean  @default(false)
+  error     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}

@@ -19,6 +19,13 @@ export const envSchema = z.object({
   WHATSAPP_VERIFY_TOKEN: z.string().default('local_verify_token'),
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  // App Secret used to verify inbound webhook signatures. When unset (local
+  // dev), signature verification is skipped so simulated payloads work.
+  WHATSAPP_APP_SECRET: z.string().optional(),
+
+  // Shared secret guarding the admin endpoints. When unset, admin routes are
+  // disabled (return 403).
+  ADMIN_TOKEN: z.string().optional(),
 
   LLM_PROVIDER: z.enum(['openai', 'mock']).default('openai'),
   OPENAI_API_KEY: z.string().optional(),

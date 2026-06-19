@@ -64,4 +64,7 @@ export interface EngineResult {
   intent: Intent;
   createdAppointmentId?: string;
   createdHandoffId?: string;
+  // True when the bot intentionally stays silent (a human is handling the
+  // conversation). The caller must not send a reply.
+  silent?: boolean;
 }

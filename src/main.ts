@@ -5,7 +5,8 @@ import { AppModule } from './app.module';
 import { Env } from './config/env.schema';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody is required to verify the Meta webhook signature.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   // Validation is handled per-route with ZodValidationPipe (see DTOs).
   app.enableShutdownHooks();
 

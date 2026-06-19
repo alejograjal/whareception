@@ -2,7 +2,18 @@
   "permissions": {
     "allow": [
       "Bash(npx jest *)",
-      "Bash(pkill -f 'dist/main')"
+      "Bash(pkill -f 'dist/main')",
+      "Bash(npm install *)",
+      "Bash(node -e \"console.log\\('bullmq', require\\('bullmq/package.json'\\).version\\); console.log\\('@nestjs/bullmq', require\\('@nestjs/bullmq/package.json'\\).version\\)\")",
+      "Bash(npx prisma *)",
+      "Bash(docker compose *)",
+      "Bash(docker exec *)",
+      "Bash(break)",
+      "Bash(npm run *)",
+      "Bash(curl -s localhost:3000/health)",
+      "Read(//private/tmp/**)",
+      "Bash(curl -s -X POST localhost:3000/webhooks/whatsapp -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(echo \"health: $\\(curl -s localhost:3000/health\\)\")"
     ]
   }
 }

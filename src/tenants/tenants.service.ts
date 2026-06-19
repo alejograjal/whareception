@@ -24,6 +24,27 @@ export class TenantsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Resolves a tenant by the Meta WhatsApp phone number id the message
+   * arrived on. Used by the webhook to route inbound messages.
+   */
+  async getByPhoneNumberId(phoneNumberId: string): Promise<TenantConfig> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { whatsappPhoneNumberId: phoneNumberId },
+      include: {
+        services: { where: { active: true } },
+        faqs: { where: { active: true } },
+      },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException(
+        `No tenant configured for phone_number_id: ${phoneNumberId}`,
+      );
+    }
+    return tenant;
+  }
+
   async getBySlug(slug: string): Promise<TenantConfig> {
     const cached = this.cache.get(slug);
     if (cached && cached.expiresAt > this.now()) {

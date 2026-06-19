@@ -1,7 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { ConversationsService } from '../conversations/conversations.service';
+import { TenantConfig, TenantsService } from '../tenants/tenants.service';
 import { EngineResult } from '../common/types';
+import { NormalizedInboundMessage } from './dto/meta-webhook.dto';
 import {
   WHATSAPP_CLIENT,
   WhatsAppClient,
@@ -13,8 +14,9 @@ export interface InboundResult extends EngineResult {
 
 /**
  * Glue between an inbound WhatsApp message (real or simulated) and the
- * conversation engine: runs the engine, then delivers the reply through the
- * configured WhatsApp client.
+ * conversation engine: resolves the tenant, runs the engine, then delivers the
+ * reply through the configured WhatsApp client (unless the bot is staying
+ * silent because a human is handling the conversation).
  */
 @Injectable()
 export class WhatsAppService {
@@ -22,30 +24,47 @@ export class WhatsAppService {
 
   constructor(
     private readonly conversations: ConversationsService,
-    private readonly prisma: PrismaService,
+    private readonly tenants: TenantsService,
     @Inject(WHATSAPP_CLIENT) private readonly client: WhatsAppClient,
   ) {}
 
-  async processInbound(
+  /** Simulation endpoint path: tenant resolved by slug. */
+  async handleSimulated(
     tenantSlug: string,
     fromPhone: string,
     body: string,
   ): Promise<InboundResult> {
-    const result = await this.conversations.handleInboundMessage(
-      tenantSlug,
-      fromPhone,
-      body,
-    );
-
-    await this.client.sendText({ to: fromPhone, body: result.reply });
-
-    return { ...result, to: fromPhone };
+    const tenant = await this.tenants.getBySlug(tenantSlug);
+    return this.run(tenant, fromPhone, body);
   }
 
-  /** Stores a raw webhook payload for audit/replay (Phase 2 parses it). */
-  async recordWebhookEvent(payload: unknown): Promise<void> {
-    await this.prisma.webhookEvent.create({
-      data: { source: 'whatsapp', payload: payload as object },
-    });
+  /** Real webhook path: tenant resolved by Meta phone_number_id. */
+  async handleMetaMessage(msg: NormalizedInboundMessage): Promise<InboundResult> {
+    const tenant = await this.tenants.getByPhoneNumberId(msg.phoneNumberId);
+    return this.run(tenant, msg.from, msg.body, msg.providerMessageId);
+  }
+
+  private async run(
+    tenant: TenantConfig,
+    fromPhone: string,
+    body: string,
+    providerMessageId?: string,
+  ): Promise<InboundResult> {
+    const result = await this.conversations.handleInboundMessage(
+      tenant,
+      fromPhone,
+      body,
+      { providerMessageId },
+    );
+
+    if (!result.silent && result.reply) {
+      await this.client.sendText({ to: fromPhone, body: result.reply });
+    } else if (result.silent) {
+      this.logger.log(
+        `Bot silent for ${fromPhone} (handoff active); message recorded.`,
+      );
+    }
+
+    return { ...result, to: fromPhone };
   }
 }

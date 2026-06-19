@@ -12,7 +12,7 @@ async function main() {
 
   const tenant = await prisma.tenant.upsert({
     where: { slug },
-    update: {},
+    update: { whatsappPhoneNumberId: '123456789012345' },
     create: {
       slug,
       name: 'Demo Vet',
@@ -23,6 +23,9 @@ async function main() {
       locationText: 'Alajuela, Costa Rica',
       googleMapsUrl: 'https://maps.google.com',
       internalWhatsappNumber: '+50688880000',
+      // Demo phone_number_id used by the simulated Meta webhook. Replace with
+      // the real one Meta assigns to this clinic's number in production.
+      whatsappPhoneNumberId: '123456789012345',
       businessHours: {
         monday: '8:00 AM - 6:00 PM',
         tuesday: '8:00 AM - 6:00 PM',

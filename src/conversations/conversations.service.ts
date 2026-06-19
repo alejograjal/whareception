@@ -1,7 +1,12 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Conversation, Customer, Prisma, Service } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { TenantConfig, TenantsService } from '../tenants/tenants.service';
+import { TenantConfig } from '../tenants/tenants.service';
 import {
   AppointmentStep,
   ConversationState,
@@ -31,7 +36,6 @@ export class ConversationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly tenants: TenantsService,
     private readonly stateStore: ConversationStateStore,
     private readonly stateMachine: ConversationStateMachine,
     private readonly classifier: IntentClassifierService,
@@ -41,15 +45,28 @@ export class ConversationsService {
   ) {}
 
   async handleInboundMessage(
-    tenantSlug: string,
+    tenant: TenantConfig,
     fromPhone: string,
     body: string,
+    opts: { providerMessageId?: string } = {},
   ): Promise<EngineResult> {
-    const tenant = await this.tenants.getBySlug(tenantSlug);
     const customer = await this.upsertCustomer(tenant, fromPhone);
     const conversation = await this.getOrCreateConversation(tenant, customer);
 
-    await this.persistMessage(conversation.id, 'inbound', 'customer', body);
+    await this.persistMessage(
+      conversation.id,
+      'inbound',
+      'customer',
+      body,
+      undefined,
+      opts.providerMessageId,
+    );
+
+    // A human is handling this conversation — record the message but stay
+    // silent until the handoff is resolved (see admin reopen endpoint).
+    if (conversation.status === 'awaiting_human') {
+      return { reply: '', intent: Intent.HumanRequested, silent: true };
+    }
 
     const state = await this.loadState(tenant, fromPhone, conversation, customer);
     const result = await this.decide(tenant, customer, conversation, state, body);
@@ -67,6 +84,38 @@ export class ConversationsService {
     });
 
     return result;
+  }
+
+  /**
+   * Resolves a handoff and returns the conversation to the bot: marks the
+   * handoff resolved, sets the conversation back to active, and clears any
+   * stale in-progress state so the next message starts fresh.
+   */
+  async resolveHandoff(handoffId: string): Promise<{ conversationId: string }> {
+    const handoff = await this.prisma.handoffRequest.findUnique({
+      where: { id: handoffId },
+      include: {
+        conversation: { include: { tenant: true, customer: true } },
+      },
+    });
+    if (!handoff) {
+      throw new NotFoundException(`Unknown handoff: ${handoffId}`);
+    }
+
+    await this.prisma.handoffRequest.update({
+      where: { id: handoffId },
+      data: { status: 'resolved' },
+    });
+    await this.prisma.conversation.update({
+      where: { id: handoff.conversationId },
+      data: { status: 'active' },
+    });
+    await this.stateStore.clear(
+      handoff.conversation.tenant.slug,
+      handoff.conversation.customer.phone,
+    );
+
+    return { conversationId: handoff.conversationId };
   }
 
   // --- core decision logic ------------------------------------------------
@@ -450,6 +499,7 @@ export class ConversationsService {
     role: 'customer' | 'assistant' | 'system',
     body: string,
     metadata?: Record<string, unknown>,
+    providerMessageId?: string,
   ): Promise<void> {
     await this.prisma.message.create({
       data: {
@@ -457,6 +507,7 @@ export class ConversationsService {
         direction,
         role,
         body,
+        providerMessageId: providerMessageId ?? null,
         metadata: metadata
           ? (metadata as Prisma.InputJsonValue)
           : undefined,

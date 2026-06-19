@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { TenantsModule } from '../tenants/tenants.module';
 import { LlmModule } from '../llm/llm.module';
 import { AppointmentsModule } from '../appointments/appointments.module';
 import { HandoffModule } from '../handoff/handoff.module';
@@ -9,7 +8,7 @@ import { ConversationStateMachine } from './conversation-state.machine';
 import { IntentClassifierService } from './intent-classifier.service';
 
 @Module({
-  imports: [TenantsModule, LlmModule, AppointmentsModule, HandoffModule],
+  imports: [LlmModule, AppointmentsModule, HandoffModule],
   providers: [
     ConversationsService,
     ConversationStateStore,

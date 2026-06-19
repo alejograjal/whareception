@@ -86,6 +86,9 @@ model Tenant {
   googleMapsUrl          String?
   // Number the internal team summaries are sent to.
   internalWhatsappNumber String?
+  // Meta WhatsApp Cloud API phone number id this tenant receives messages on.
+  // Used to route inbound webhook messages to the right tenant.
+  whatsappPhoneNumberId  String? @unique
 
   appointmentMode AppointmentMode @default(lead_only)
   tone            String          @default("friendly and professional")
@@ -193,12 +196,15 @@ model Message {
   direction      MessageDirection
   role           MessageRole
   body           String
-  // Optional structured metadata (detected intent, provider message id, etc.).
+  // WhatsApp message id (wamid) for inbound, or provider id for outbound.
+  providerMessageId String?
+  // Optional structured metadata (detected intent, etc.).
   metadata       Json?
 
   createdAt DateTime @default(now())
 
   @@index([conversationId])
+  @@index([providerMessageId])
 }
 
 model AppointmentRequest {

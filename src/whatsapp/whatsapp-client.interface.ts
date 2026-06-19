@@ -3,6 +3,9 @@ export const WHATSAPP_CLIENT = Symbol('WHATSAPP_CLIENT');
 export interface OutboundMessage {
   to: string;
   body: string;
+  // Sender's Meta phone number id (the tenant's number). When omitted, the
+  // client falls back to the globally configured WHATSAPP_PHONE_NUMBER_ID.
+  fromPhoneNumberId?: string;
 }
 
 /**

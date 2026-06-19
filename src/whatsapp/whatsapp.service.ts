@@ -58,7 +58,11 @@ export class WhatsAppService {
     );
 
     if (!result.silent && result.reply) {
-      await this.client.sendText({ to: fromPhone, body: result.reply });
+      await this.client.sendText({
+        to: fromPhone,
+        body: result.reply,
+        fromPhoneNumberId: tenant.whatsappPhoneNumberId ?? undefined,
+      });
     } else if (result.silent) {
       this.logger.log(
         `Bot silent for ${fromPhone} (handoff active); message recorded.`,

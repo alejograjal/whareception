@@ -14,21 +14,31 @@ import {
 export class MetaWhatsAppClient implements WhatsAppClient {
   private readonly logger = new Logger(MetaWhatsAppClient.name);
   private readonly accessToken: string;
-  private readonly phoneNumberId: string;
+  // Optional global fallback; in multi-tenant (Model A) the sender id comes
+  // per-message from the tenant's configuration.
+  private readonly defaultPhoneNumberId?: string;
 
   constructor(private readonly config: ConfigService<Env, true>) {
     this.accessToken = this.config.get('WHATSAPP_ACCESS_TOKEN', {
       infer: true,
     }) as string;
-    this.phoneNumberId = this.config.get('WHATSAPP_PHONE_NUMBER_ID', {
+    this.defaultPhoneNumberId = this.config.get('WHATSAPP_PHONE_NUMBER_ID', {
       infer: true,
-    }) as string;
+    });
   }
 
   async sendText(
     message: OutboundMessage,
   ): Promise<{ providerMessageId: string }> {
-    const url = `https://graph.facebook.com/v19.0/${this.phoneNumberId}/messages`;
+    const fromPhoneNumberId =
+      message.fromPhoneNumberId ?? this.defaultPhoneNumberId;
+    if (!fromPhoneNumberId) {
+      throw new Error(
+        'No WhatsApp phone number id to send from. Set the tenant ' +
+          'whatsappPhoneNumberId (or WHATSAPP_PHONE_NUMBER_ID as fallback).',
+      );
+    }
+    const url = `https://graph.facebook.com/v19.0/${fromPhoneNumberId}/messages`;
     const res = await fetch(url, {
       method: 'POST',
       headers: {

@@ -70,6 +70,7 @@ export class NotificationsService {
     await this.whatsapp.sendText({
       to: tenant.internalWhatsappNumber,
       body,
+      fromPhoneNumberId: tenant.whatsappPhoneNumberId ?? undefined,
     });
   }
 }

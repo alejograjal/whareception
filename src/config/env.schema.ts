@@ -56,13 +56,13 @@ export function validateEnv(config: Record<string, unknown>): Env {
         'Set LLM_PROVIDER=mock for offline development.',
     );
   }
-  if (
-    env.WHATSAPP_PROVIDER === 'meta' &&
-    (!env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID)
-  ) {
+  // Model A (multi-tenant): a single shared access token, while each tenant's
+  // phone_number_id comes from its own configuration. WHATSAPP_PHONE_NUMBER_ID
+  // is only an optional global fallback, so it is not required here.
+  if (env.WHATSAPP_PROVIDER === 'meta' && !env.WHATSAPP_ACCESS_TOKEN) {
     throw new Error(
-      'WHATSAPP_PROVIDER=meta requires WHATSAPP_ACCESS_TOKEN and ' +
-        'WHATSAPP_PHONE_NUMBER_ID to be set.',
+      'WHATSAPP_PROVIDER=meta requires WHATSAPP_ACCESS_TOKEN to be set ' +
+        '(shared token). Each tenant provides its own whatsappPhoneNumberId.',
     );
   }
 

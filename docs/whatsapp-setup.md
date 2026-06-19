@@ -67,6 +67,33 @@ reemplazar por el real.)
 
 ---
 
+## 4.1 Agregar una clínica nueva (Modelo A)
+
+Con el Modelo A, **un solo servidor y un solo token** atienden a todas las
+clínicas. Cada una responde desde su propio número. Para dar de alta una nueva:
+
+1. Agrega su número en tu WABA (Meta te da un `phone_number_id`).
+2. Suscribe ese número al webhook de tu App (el mismo de siempre).
+3. Crea la fila del tenant con su `whatsappPhoneNumberId`:
+
+```sql
+INSERT INTO "Tenant" (id, slug, name, industry, timezone, "businessHours",
+  "appointmentMode", tone, "emergencyKeywords", "whatsappPhoneNumberId",
+  "internalWhatsappNumber", "createdAt", "updatedAt")
+VALUES (gen_random_uuid(), 'clinica-nueva', 'Clínica Nueva', 'veterinary',
+  'America/Costa_Rica', '{"monday":"8:00 AM - 6:00 PM"}'::jsonb, 'lead_only',
+  'amable y profesional', ARRAY['emergencia','urgente'], '<phone_number_id>',
+  '+506XXXXXXXX', now(), now());
+```
+
+4. Agrega sus servicios y FAQs (tablas `Service` y `Faq`).
+
+No hace falta tocar el `.env` ni reiniciar nada por cada clínica: el token es
+compartido y el número sale de la fila del tenant.
+
+> El alta por SQL sirve para el piloto. Cuando tengas varias clínicas conviene
+> un endpoint de alta de tenants (siguiente paso recomendado).
+
 ## 5. Token de acceso permanente
 
 El token que Meta muestra por defecto **expira en 24h**. Para producción:

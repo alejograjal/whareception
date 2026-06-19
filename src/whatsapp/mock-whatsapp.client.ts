@@ -17,8 +17,9 @@ export class MockWhatsAppClient implements WhatsAppClient {
     message: OutboundMessage,
   ): Promise<{ providerMessageId: string }> {
     const providerMessageId = `mock-${++this.counter}`;
+    const from = message.fromPhoneNumberId ?? 'default';
     this.logger.log(
-      `[OUTBOUND -> ${message.to}] (${providerMessageId})\n${message.body}`,
+      `[OUTBOUND from:${from} -> ${message.to}] (${providerMessageId})\n${message.body}`,
     );
     return { providerMessageId };
   }

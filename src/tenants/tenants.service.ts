@@ -1,6 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Faq, Service, Tenant } from '@prisma/client';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Faq, Prisma, Service, Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateTenantDto } from './dto/create-tenant.dto';
 
 export type TenantConfig = Tenant & {
   services: Service[];
@@ -72,6 +77,65 @@ export class TenantsService {
 
   invalidate(slug: string): void {
     this.cache.delete(slug);
+  }
+
+  /** Lightweight listing for the admin/onboarding views. */
+  async list(): Promise<
+    Pick<Tenant, 'id' | 'slug' | 'name' | 'industry' | 'whatsappPhoneNumberId'>[]
+  > {
+    return this.prisma.tenant.findMany({
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        industry: true,
+        whatsappPhoneNumberId: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /**
+   * Onboards a new business with its services and FAQs in a single
+   * transaction. Throws 409 if the slug or phone number id already exists.
+   */
+  async create(dto: CreateTenantDto): Promise<TenantConfig> {
+    try {
+      const tenant = await this.prisma.tenant.create({
+        data: {
+          slug: dto.slug,
+          name: dto.name,
+          industry: dto.industry,
+          timezone: dto.timezone,
+          defaultLanguage: dto.defaultLanguage,
+          tone: dto.tone,
+          businessHours: dto.businessHours,
+          locationText: dto.locationText,
+          googleMapsUrl: dto.googleMapsUrl,
+          internalWhatsappNumber: dto.internalWhatsappNumber,
+          whatsappPhoneNumberId: dto.whatsappPhoneNumberId,
+          emergencyKeywords: dto.emergencyKeywords,
+          emergencyMessage: dto.emergencyMessage,
+          services: { create: dto.services },
+          faqs: { create: dto.faqs },
+        },
+        include: {
+          services: { where: { active: true } },
+          faqs: { where: { active: true } },
+        },
+      });
+      return tenant;
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'A tenant with that slug or phone number id already exists.',
+        );
+      }
+      throw err;
+    }
   }
 
   private now(): number {

@@ -3,13 +3,15 @@ import {
   AppointmentSlots,
   AppointmentStep,
 } from '../common/types';
+import { Language, t } from '../common/i18n/messages';
 import { TenantConfig } from '../tenants/tenants.service';
 
 /**
  * Drives the lead_only appointment-collection flow. Pure logic: given the
  * slots collected so far, it decides which slot to ask for next and what
- * question to send. Slot extraction itself is done by the LLM adapter; this
- * machine only sequences the conversation and never fabricates data.
+ * question to send (in the conversation language). Slot extraction itself is
+ * done elsewhere; this machine only sequences the conversation and never
+ * fabricates data.
  */
 @Injectable()
 export class ConversationStateMachine {
@@ -33,45 +35,38 @@ export class ConversationStateMachine {
     return missing ? missing.step : AppointmentStep.Complete;
   }
 
-  /** Question to send the customer for a given step. */
+  /** Question to send the customer for a given step, in the given language. */
   promptFor(
     step: AppointmentStep,
     tenant: TenantConfig,
     slots: AppointmentSlots,
+    lang: Language,
   ): string {
+    const m = t(lang);
     switch (step) {
       case AppointmentStep.Service: {
         const names = tenant.services
           .filter((s) => s.flow === 'lead_only')
           .map((s) => s.name);
         const options = names.length ? ` (${names.join(', ')})` : '';
-        return `What service do you need${options}?`;
+        return m.askService(options);
       }
       case AppointmentStep.CustomerName:
-        return 'Great. What is your name?';
+        return m.askCustomerName;
       case AppointmentStep.PetName:
-        return `Thanks${slots.customerName ? `, ${slots.customerName}` : ''}. What is your pet's name?`;
+        return m.askPetName(slots.customerName);
       case AppointmentStep.PetType:
-        return `What type of pet is ${slots.petName ?? 'your pet'}? (for example: dog, cat)`;
+        return m.askPetType(slots.petName);
       case AppointmentStep.PreferredTime:
-        return 'What day or time would you prefer?';
+        return m.askPreferredTime;
       case AppointmentStep.Complete:
-        return this.completionMessage(slots);
+        return this.completionMessage(slots, lang);
     }
   }
 
   /** Customer-facing acknowledgement once all slots are collected. */
-  completionMessage(slots: AppointmentSlots): string {
-    return [
-      'Got it. I will send your request to the team so they can confirm availability.',
-      '',
-      'Summary:',
-      `- Customer: ${slots.customerName ?? 'Unknown'}`,
-      `- Pet: ${slots.petName ?? 'Unknown'} (${slots.petType ?? 'Unknown'})`,
-      `- Service: ${slots.serviceName ?? 'Unknown'}`,
-      `- Preferred time: ${slots.preferredTime ?? 'Not specified'}`,
-      `- Urgency: ${slots.isEmergency ? 'Emergency' : 'Normal'}`,
-    ].join('\n');
+  completionMessage(slots: AppointmentSlots, lang: Language): string {
+    return t(lang).completion(slots);
   }
 
   private isFilled(value: unknown): boolean {

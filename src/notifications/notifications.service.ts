@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AppointmentRequest } from '@prisma/client';
+import { asLanguage, t } from '../common/i18n/messages';
 import { TenantConfig } from '../tenants/tenants.service';
 import {
   WHATSAPP_CLIENT,
@@ -22,7 +23,7 @@ export class NotificationsService {
     tenant: TenantConfig,
     appointment: AppointmentRequest,
   ): Promise<void> {
-    const summary = this.buildAppointmentSummary(appointment);
+    const summary = this.buildAppointmentSummary(tenant, appointment);
     await this.dispatch(tenant, summary);
   }
 
@@ -32,31 +33,36 @@ export class NotificationsService {
     customerPhone: string,
     triggeringMessage: string,
   ): Promise<void> {
+    const s = t(asLanguage(tenant.defaultLanguage)).summary;
     const summary = [
-      'Human handoff needed',
+      s.handoffTitle,
       '',
-      `Reason: ${reason}`,
-      `Customer: ${customerPhone}`,
-      `Message: ${triggeringMessage}`,
+      `${s.reason}: ${reason}`,
+      `${s.customer}: ${customerPhone}`,
+      `${s.message}: ${triggeringMessage}`,
       '',
-      'Please follow up with this customer.',
+      s.followUp,
     ].join('\n');
     await this.dispatch(tenant, summary);
   }
 
-  private buildAppointmentSummary(a: AppointmentRequest): string {
+  private buildAppointmentSummary(
+    tenant: TenantConfig,
+    a: AppointmentRequest,
+  ): string {
+    const s = t(asLanguage(tenant.defaultLanguage)).summary;
     return [
-      'New appointment request',
+      s.appointmentTitle,
       '',
-      `Customer: ${a.customerName ?? 'Unknown'}`,
-      `Pet: ${a.petName ?? 'Unknown'}`,
-      `Pet type: ${a.petType ?? 'Unknown'}`,
-      `Service: ${a.serviceName ?? 'Unknown'}`,
-      `Preferred time: ${a.preferredTime ?? 'Not specified'}`,
-      `Urgency: ${a.isEmergency ? 'Emergency' : 'Normal'}`,
-      `Phone: ${a.phone ?? 'Unknown'}`,
+      `${s.customer}: ${a.customerName ?? s.unknown}`,
+      `${s.pet}: ${a.petName ?? s.unknown}`,
+      `${s.petType}: ${a.petType ?? s.unknown}`,
+      `${s.service}: ${a.serviceName ?? s.unknown}`,
+      `${s.preferredTime}: ${a.preferredTime ?? s.notSpecified}`,
+      `${s.urgency}: ${a.isEmergency ? s.emergency : s.normal}`,
+      `${s.phone}: ${a.phone ?? s.unknown}`,
       '',
-      'Status: Pending confirmation',
+      s.pendingConfirmation,
     ].join('\n');
   }
 

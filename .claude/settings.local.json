@@ -13,7 +13,22 @@
       "Bash(curl -s localhost:3000/health)",
       "Read(//private/tmp/**)",
       "Bash(curl -s -X POST localhost:3000/webhooks/whatsapp -H 'Content-Type: application/json' -d '{ *)",
-      "Bash(echo \"health: $\\(curl -s localhost:3000/health\\)\")"
+      "Bash(echo \"health: $\\(curl -s localhost:3000/health\\)\")",
+      "Bash(echo \"pg: $\\(docker exec whareception-postgres pg_isready -U postgres 2>&1\\)\")",
+      "Bash(echo \"redis: $\\(docker exec whareception-redis redis-cli ping 2>&1\\)\")",
+      "Bash(open -a Docker)",
+      "Bash(echo \"pg: $\\(docker exec whareception-postgres pg_isready -U postgres 2>&1)",
+      "Bash(node -e \"console.log\\('@nestjs/swagger', require\\('@nestjs/swagger/package.json'\\).version\\)\")",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' localhost:3000/docs)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' localhost:3000/docs-json)",
+      "Bash(echo \"docs: $\\(curl -s -o /dev/null -w '%{http_code}' localhost:3000/docs\\) | openapi: $\\(curl -s -o /dev/null -w '%{http_code}' localhost:3000/docs-json\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" -X POST localhost:3000/tenants -H 'Content-Type: application/json' -d '{}')",
+      "Bash(curl -s -X POST localhost:3000/tenants -H 'Content-Type: application/json' -H 'x-admin-token: local_admin_token' -d '{ *)",
+      "Bash(python3 -c 'import sys,json;d=json.load\\(sys.stdin\\);print\\(\"creado:\",d.get\\(\"slug\"\\),\"| servicios:\",len\\(d.get\\(\"services\",[]\\)\\),\"| faqs:\",len\\(d.get\\(\"faqs\",[]\\)\\)\\)')",
+      "Bash(curl -s -X POST localhost:3000/sim/messages -H 'Content-Type: application/json' -d '{\"tenantId\":\"barber-centro\",\"from\":\"+50612121212\",\"message\":\"cual es el horario?\"}')",
+      "Bash(python3 -c 'import sys,json;print\\(\"  ->\",json.load\\(sys.stdin\\)[\"reply\"]\\)')",
+      "Bash(curl -s localhost:3000/tenants -H 'x-admin-token: local_admin_token')",
+      "Bash(python3 -c 'import sys,json;print\\(\"  \", [t[\"slug\"] for t in json.load\\(sys.stdin\\)]\\)')"
     ]
   }
 }

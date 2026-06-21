@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
+import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Env } from '../config/env.schema';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { PrismaService } from '../prisma/prisma.service';
@@ -28,6 +29,7 @@ import {
 } from './dto/meta-webhook.dto';
 import { MetaSignatureGuard } from './meta-signature.guard';
 
+@ApiTags('whatsapp')
 @Controller()
 export class WhatsAppController {
   private readonly logger = new Logger(WhatsAppController.name);
@@ -47,6 +49,23 @@ export class WhatsAppController {
    *   { "tenantId": "demo-vet", "from": "+50688888888", "message": "..." }
    */
   @Post('sim/messages')
+  @ApiOperation({
+    summary: 'Simular un mensaje entrante (sin WhatsApp real)',
+    description:
+      'Corre el motor completo. El tenant se resuelve por slug. Útil para ' +
+      'pruebas locales y demos.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['tenantId', 'from', 'message'],
+      properties: {
+        tenantId: { type: 'string', example: 'demo' },
+        from: { type: 'string', example: '+50688888888' },
+        message: { type: 'string', example: 'Hola, quiero una cita para mi perro' },
+      },
+    },
+  })
   @UsePipes(new ZodValidationPipe(simulateMessageSchema))
   async simulate(@Body() dto: SimulateMessageDto) {
     const result = await this.whatsapp.handleSimulated(
@@ -67,6 +86,7 @@ export class WhatsAppController {
    * Meta webhook verification handshake (GET).
    */
   @Get('webhooks/whatsapp')
+  @ApiOperation({ summary: 'Verificación del webhook de Meta (handshake)' })
   verify(
     @Query('hub.mode') mode: string,
     @Query('hub.verify_token') token: string,
@@ -85,6 +105,12 @@ export class WhatsAppController {
    * and acknowledges immediately so Meta does not retry.
    */
   @Post('webhooks/whatsapp')
+  @ApiOperation({
+    summary: 'Receptor del webhook de Meta (mensajes entrantes)',
+    description:
+      'Verifica la firma, guarda el evento, encola cada mensaje de texto y ' +
+      'responde 200 de inmediato.',
+  })
   @UseGuards(MetaSignatureGuard)
   @HttpCode(200)
   async receive(@Body() rawPayload: unknown): Promise<{ received: true }> {

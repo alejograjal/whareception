@@ -37,17 +37,30 @@ describe('ConversationStateMachine', () => {
     expect(sm.nextStep({ serviceName: '   ' })).toBe(AppointmentStep.Service);
   });
 
-  it('builds a completion summary from collected slots', () => {
-    const msg = sm.completionMessage({
-      serviceName: 'Vaccination',
-      customerName: 'Ana',
-      petName: 'Luna',
-      petType: 'Dog',
-      preferredTime: 'Saturday morning',
-    });
+  it('builds a completion summary from collected slots (en)', () => {
+    const msg = sm.completionMessage(
+      {
+        serviceName: 'Vaccination',
+        customerName: 'Ana',
+        petName: 'Luna',
+        petType: 'Dog',
+        preferredTime: 'Saturday morning',
+      },
+      'en',
+    );
     expect(msg).toContain('Ana');
     expect(msg).toContain('Luna');
     expect(msg).toContain('Vaccination');
     expect(msg).toContain('Normal');
+  });
+
+  it('builds the completion summary in Spanish', () => {
+    const msg = sm.completionMessage(
+      { serviceName: 'Vacunación', customerName: 'Ana', petName: 'Luna' },
+      'es',
+    );
+    expect(msg).toContain('Resumen');
+    expect(msg).toContain('Cliente');
+    expect(msg).toContain('Ana');
   });
 });

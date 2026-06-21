@@ -92,6 +92,9 @@ model Tenant {
 
   appointmentMode AppointmentMode @default(lead_only)
   tone            String          @default("friendly and professional")
+  // Default language for bot replies and team summaries ("es" | "en").
+  // Per-message detection can override replies to match the customer.
+  defaultLanguage String          @default("es")
 
   // Keywords that immediately trigger an emergency handoff.
   emergencyKeywords String[]

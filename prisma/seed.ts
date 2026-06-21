@@ -2,29 +2,36 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Generic demo tenant. The platform is multi-industry; this demo happens to be
+// a veterinary clinic (the launch niche), but the slug/name are generic so it
+// is not tied to "vet".
+const DEMO_SLUG = 'demo';
+
 /**
- * Seeds a demo veterinary clinic tenant ("demo-vet") with services, FAQs,
- * business hours and emergency rules so the simulation endpoint can be
- * exercised end-to-end without any external configuration.
+ * Seeds a generic demo business ("demo") with services, FAQs, business hours
+ * and emergency rules in Spanish, so the simulation endpoint can be exercised
+ * end-to-end without any external configuration.
  */
 async function main() {
-  const slug = 'demo-vet';
-
   const tenant = await prisma.tenant.upsert({
-    where: { slug },
-    update: { whatsappPhoneNumberId: '123456789012345' },
+    where: { slug: DEMO_SLUG },
+    update: {
+      whatsappPhoneNumberId: '123456789012345',
+      defaultLanguage: 'es',
+    },
     create: {
-      slug,
-      name: 'Demo Vet',
+      slug: DEMO_SLUG,
+      name: 'Negocio Demo',
       industry: 'veterinary',
       timezone: 'America/Costa_Rica',
       appointmentMode: 'lead_only',
-      tone: 'friendly and professional',
+      tone: 'amable y profesional',
+      defaultLanguage: 'es',
       locationText: 'Alajuela, Costa Rica',
       googleMapsUrl: 'https://maps.google.com',
       internalWhatsappNumber: '+50688880000',
       // Demo phone_number_id used by the simulated Meta webhook. Replace with
-      // the real one Meta assigns to this clinic's number in production.
+      // the real one Meta assigns to this business's number in production.
       whatsappPhoneNumberId: '123456789012345',
       businessHours: {
         monday: '8:00 AM - 6:00 PM',
@@ -33,33 +40,31 @@ async function main() {
         thursday: '8:00 AM - 6:00 PM',
         friday: '8:00 AM - 6:00 PM',
         saturday: '8:00 AM - 2:00 PM',
-        sunday: 'Closed',
+        sunday: 'Cerrado',
       },
       emergencyKeywords: [
-        'emergency',
         'emergencia',
-        'urgent',
         'urgente',
-        'bleeding',
+        'emergency',
+        'urgent',
         'sangrando',
         'sangre',
-        'not breathing',
         'no respira',
-        'poisoned',
         'envenenado',
-        'seizure',
+        'envenenada',
         'convulsion',
-        'hit by car',
+        'convulsión',
         'atropellado',
+        'atropellada',
       ],
       emergencyMessage:
-        'This may be an emergency. Please call the clinic directly at ' +
-        '+506 8888 0000 right now. Our team has been notified and will ' +
-        'contact you as soon as possible.',
+        'Esto puede ser una emergencia. Por favor llame directamente a la ' +
+        'clínica al +506 8888 0000 ahora mismo. Nuestro equipo ya fue ' +
+        'notificado y le contactará lo antes posible.',
     },
   });
 
-  // Remove existing services/faqs for an idempotent reseed.
+  // Idempotent reseed of services/faqs.
   await prisma.service.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.faq.deleteMany({ where: { tenantId: tenant.id } });
 
@@ -67,27 +72,27 @@ async function main() {
     data: [
       {
         tenantId: tenant.id,
-        name: 'Medical consultation',
-        keywords: ['consultation', 'consulta', 'sick', 'enfermo', 'checkup', 'revision'],
+        name: 'Consulta médica',
+        keywords: ['consulta', 'consultation', 'enfermo', 'enferma', 'revision', 'revisión', 'cita medica'],
         flow: 'lead_only',
       },
       {
         tenantId: tenant.id,
-        name: 'Vaccination',
-        keywords: ['vaccine', 'vaccination', 'vacuna', 'vacunas', 'shot'],
+        name: 'Vacunación',
+        keywords: ['vacuna', 'vacunas', 'vacunación', 'vaccine', 'vaccination'],
         flow: 'lead_only',
       },
       {
         tenantId: tenant.id,
-        name: 'Grooming',
-        keywords: ['grooming', 'groom', 'bath', 'baño', 'estetica', 'corte'],
+        name: 'Estética / Grooming',
+        keywords: ['estetica', 'estética', 'baño', 'bano', 'corte', 'grooming', 'groom'],
         flow: 'external_link',
-        bookingUrl: 'https://example.com/book/grooming',
+        bookingUrl: 'https://example.com/reservar/estetica',
       },
       {
         tenantId: tenant.id,
-        name: 'Emergency',
-        keywords: ['emergency', 'emergencia', 'urgent', 'urgente'],
+        name: 'Emergencia',
+        keywords: ['emergencia', 'urgente', 'emergency', 'urgent'],
         flow: 'human_handoff',
       },
     ],
@@ -98,27 +103,27 @@ async function main() {
       {
         tenantId: tenant.id,
         key: 'hours',
-        question: 'What are your business hours?',
+        question: '¿Cuál es el horario de atención?',
         answer:
-          'We are open Monday to Friday from 8:00 AM to 6:00 PM, ' +
-          'Saturday from 8:00 AM to 2:00 PM, and closed on Sunday.',
-        keywords: ['hours', 'horario', 'open', 'abren', 'close', 'cierran', 'schedule'],
+          'Atendemos de lunes a viernes de 8:00 AM a 6:00 PM, los sábados de ' +
+          '8:00 AM a 2:00 PM, y los domingos permanecemos cerrados.',
+        keywords: ['horario', 'horarios', 'abren', 'cierran', 'hours', 'open', 'schedule'],
       },
       {
         tenantId: tenant.id,
         key: 'location',
-        question: 'Where are you located?',
+        question: '¿Dónde están ubicados?',
         answer:
-          'We are located in Alajuela, Costa Rica. Here is our location: ' +
-          'https://maps.google.com',
-        keywords: ['location', 'ubicacion', 'where', 'donde', 'address', 'direccion', 'map', 'mapa'],
+          'Estamos ubicados en Alajuela, Costa Rica. Aquí está nuestra ' +
+          'ubicación: https://maps.google.com',
+        keywords: ['ubicacion', 'ubicación', 'donde', 'dónde', 'direccion', 'dirección', 'location', 'where', 'mapa', 'map'],
       },
       {
         tenantId: tenant.id,
         key: 'parking',
-        question: 'Do you have parking?',
-        answer: 'Yes, we have free parking available for our clients.',
-        keywords: ['parking', 'parqueo', 'estacionamiento'],
+        question: '¿Tienen parqueo?',
+        answer: 'Sí, contamos con parqueo gratuito para nuestros clientes.',
+        keywords: ['parqueo', 'estacionamiento', 'parking'],
       },
     ],
   });

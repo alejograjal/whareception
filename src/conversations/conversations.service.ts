@@ -14,6 +14,8 @@ import {
   Intent,
 } from '../common/types';
 import { LLM_PROVIDER, LlmProvider } from '../llm/llm-provider.interface';
+import { asLanguage, Language, t } from '../common/i18n/messages';
+import { detectLanguage } from '../common/i18n/detect-language';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { HandoffService } from '../handoff/handoff.service';
 import { ConversationStateStore } from './conversation-state.store';
@@ -127,6 +129,13 @@ export class ConversationsService {
     state: ConversationState,
     body: string,
   ): Promise<EngineResult> {
+    // Resolve the conversation language: lock it for an ongoing appointment to
+    // avoid mid-flow switches; otherwise detect it from the message.
+    const detected = detectLanguage(body, asLanguage(tenant.defaultLanguage));
+    const lang: Language =
+      state.flow === 'appointment' && state.language ? state.language : detected;
+    state.language = lang;
+
     // Emergencies always short-circuit, regardless of the current flow.
     if (this.classifier.detectEmergency(tenant, body)) {
       return this.handleEmergency(tenant, customer, conversation, state, body);
@@ -148,6 +157,7 @@ export class ConversationsService {
   ): Promise<EngineResult> {
     const history = await this.loadHistory(conversation.id);
     const classified = await this.classifier.classify(tenant, body, history);
+    const m = t(asLanguage(state.language));
 
     switch (classified.intent) {
       case Intent.HumanRequested:
@@ -158,14 +168,11 @@ export class ConversationsService {
           state,
           body,
           'customer_requested_human',
-          'A team member will reach out to you shortly.',
+          m.handoffHuman,
         );
 
       case Intent.Faq: {
         const faq = tenant.faqs.find((f) => f.id === classified.matchedFaqId);
-        const reply =
-          faq?.answer ??
-          'Let me connect you with a team member who can help with that.';
         if (!faq) {
           return this.raiseHandoff(
             tenant,
@@ -174,10 +181,11 @@ export class ConversationsService {
             state,
             body,
             'unhandled',
-            reply,
+            m.faqFallback,
           );
         }
-        return { reply, intent: Intent.Faq };
+        // FAQ answers are configured per-tenant and returned as written.
+        return { reply: faq.answer, intent: Intent.Faq };
       }
 
       case Intent.AppointmentRequest:
@@ -191,10 +199,7 @@ export class ConversationsService {
         );
 
       case Intent.Greeting:
-        return {
-          reply: `Hello! How can we help you today? You can ask about our hours, location, services, or request an appointment.`,
-          intent: Intent.Greeting,
-        };
+        return { reply: m.greeting, intent: Intent.Greeting };
 
       // Unknown / low-confidence -> route to a human, never guess.
       default:
@@ -205,7 +210,7 @@ export class ConversationsService {
           state,
           body,
           'low_confidence',
-          'Thanks for your message. A team member will follow up with you shortly.',
+          m.handoffLowConfidence,
         );
     }
   }
@@ -267,6 +272,11 @@ export class ConversationsService {
     });
     state.slots = this.mergeSlots(state.slots, extracted);
 
+    // Direct answer: whatever the customer just replied is taken as the answer
+    // to the question we asked, so a bare reply ("Alejandro") advances the flow
+    // even when no keyword/LLM extraction matched it.
+    state.slots = this.captureDirectAnswer(state.step, state.slots, body, tenant);
+
     // If a service got resolved that isn't lead_only, branch out of collection.
     if (state.slots.serviceName) {
       const svc = this.resolveServiceByName(tenant, state.slots.serviceName);
@@ -302,7 +312,10 @@ export class ConversationsService {
       }
       await this.stateStore.clear(tenant.slug, customer.phone);
       return {
-        reply: this.stateMachine.completionMessage(state.slots),
+        reply: this.stateMachine.completionMessage(
+          state.slots,
+          asLanguage(state.language),
+        ),
         intent: Intent.AppointmentRequest,
         createdAppointmentId: appointment.id,
       };
@@ -311,7 +324,12 @@ export class ConversationsService {
     state.step = step;
     await this.stateStore.save(tenant.slug, customer.phone, state);
     return {
-      reply: this.stateMachine.promptFor(step, tenant, state.slots),
+      reply: this.stateMachine.promptFor(
+        step,
+        tenant,
+        state.slots,
+        asLanguage(state.language),
+      ),
       intent: Intent.AppointmentRequest,
     };
   }
@@ -328,11 +346,12 @@ export class ConversationsService {
     body: string,
     service: Service,
   ): Promise<EngineResult | null> {
+    const m = t(asLanguage(state.language));
     if (service.flow === 'external_link') {
       await this.stateStore.clear(tenant.slug, customer.phone);
       const link = service.bookingUrl
-        ? `You can book ${service.name} directly here: ${service.bookingUrl}`
-        : `Please contact our team to book ${service.name}.`;
+        ? m.externalLink(service.name, service.bookingUrl)
+        : m.externalLinkNoUrl(service.name);
       return { reply: link, intent: Intent.AppointmentRequest };
     }
 
@@ -344,7 +363,7 @@ export class ConversationsService {
         state,
         body,
         'sensitive_case',
-        'A team member will assist you with this request shortly.',
+        m.handoffSensitive,
       );
     }
 
@@ -361,9 +380,7 @@ export class ConversationsService {
     body: string,
   ): Promise<EngineResult> {
     const reply =
-      tenant.emergencyMessage ??
-      'This looks urgent. Our team has been notified and will contact you ' +
-        'directly as soon as possible.';
+      tenant.emergencyMessage ?? t(asLanguage(state.language)).emergencyFallback;
     return this.raiseHandoff(
       tenant,
       customer,
@@ -406,6 +423,61 @@ export class ConversationsService {
   }
 
   // --- helpers ------------------------------------------------------------
+
+  /**
+   * Treats the customer's reply as the direct answer to the slot we last asked
+   * for, when that slot is still empty. This guarantees the appointment flow
+   * progresses on plain replies (e.g. answering "What is your name?" with just
+   * "Alejandro") regardless of keyword/LLM extraction.
+   */
+  private captureDirectAnswer(
+    step: AppointmentStep | null,
+    slots: ConversationState['slots'],
+    message: string,
+    tenant: TenantConfig,
+  ): ConversationState['slots'] {
+    const text = message.trim();
+    if (!step || !text) return slots;
+
+    switch (step) {
+      case AppointmentStep.Service: {
+        if (slots.serviceName) return slots;
+        const svc = this.classifier.matchService(tenant, message);
+        return svc ? this.mergeSlots(slots, { serviceName: svc.name }) : slots;
+      }
+      case AppointmentStep.CustomerName:
+        if (slots.customerName) return slots;
+        return this.mergeSlots(slots, { customerName: this.cleanName(text) });
+      case AppointmentStep.PetName:
+        if (slots.petName) return slots;
+        return this.mergeSlots(slots, { petName: this.cleanName(text) });
+      case AppointmentStep.PetType:
+        if (slots.petType) return slots;
+        return this.mergeSlots(slots, { petType: this.normalizePetType(text) });
+      case AppointmentStep.PreferredTime:
+        if (slots.preferredTime) return slots;
+        return this.mergeSlots(slots, { preferredTime: text });
+      default:
+        return slots;
+    }
+  }
+
+  /** Strips common lead-ins ("my name is X") and returns the bare value. */
+  private cleanName(text: string): string {
+    return text
+      .replace(
+        /^(?:my name is|my name's|i am|i'm|it's|soy|me llamo|mi nombre es)\s+/i,
+        '',
+      )
+      .trim();
+  }
+
+  private normalizePetType(text: string): string {
+    const t = text.toLowerCase();
+    if (/\b(dog|perro|perra|puppy|cachorro)\b/.test(t)) return 'Dog';
+    if (/\b(cat|gato|gata|kitten|gatito)\b/.test(t)) return 'Cat';
+    return text.trim();
+  }
 
   private mergeSlots(
     current: ConversationState['slots'],

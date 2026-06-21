@@ -55,6 +55,8 @@ export interface ConversationState {
   flow: 'idle' | 'appointment';
   step: AppointmentStep | null;
   slots: AppointmentSlots;
+  // Language locked for the conversation once detected ("es" | "en").
+  language?: 'es' | 'en';
   updatedAt: string;
 }
 
